@@ -19,14 +19,18 @@ Pure Python standard library. No packages to install.
 Unpack this folder anywhere. The folder that holds `tools\` is the project root. Results go to
 `exchange\` under that root.
 
-1. Run the unit tests. All 32 should pass.
+1. Run the unit tests from the root folder. All 32 should pass. Name the test modules as shown:
+   `python -m unittest discover` finds none in this layout.
 
        python -m unittest tests.test_checker2 tests.test_checker2_request tests.test_checker2_route
 
+   On Windows, use `py -3 -m unittest ...` if `python` is not on PATH.
 2. Copy `request-template.md` to `my-request.md` and fill in every field (see below).
+   Every file the request names (`study.md`, `tests-plan.md`, `answers.md`, `plan.md`, ...) must
+   exist in the root folder before the check, and `Sent` must be written after them.
 3. Check and route it:
 
-       run-check.cmd my-request.md                  (Windows)
+       run-check.cmd my-request.md                  (Windows; needs python on PATH, or edit run-check.cmd to call `py -3`)
        python -m tools.checker2.route my-request.md (any OS, run from the root folder)
 
 4. Read the answer: `PASS` or `RETURN` with the reasons. `WALKTHROUGH.md` shows a full run.
