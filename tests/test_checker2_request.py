@@ -26,18 +26,22 @@ CODER_HEADER = (
 )
 
 
+BODY = "\nThe task.\n"
+
+
 class HeaderTest(unittest.TestCase):
     def test_valid_review_request_passes(self):
         with tempfile.TemporaryDirectory() as root:
             (pathlib.Path(root) / "pkg").mkdir()
             (pathlib.Path(root) / "pkg" / "SHA256SUMS.txt").write_text("", encoding="utf-8")
-            text = HEADER.replace("To: reviewer", "To: owner")
+            text = HEADER.replace("To: reviewer", "To: owner") + BODY
             self.assertEqual(request.check(text, pathlib.Path(root), root), [])
 
     def test_missing_field_unknown_party_same_party_scope_and_time(self):
         with tempfile.TemporaryDirectory() as root:
             self.assertEqual(request.check("From: reviewer\n", pathlib.Path(root), root),
-                             [f"missing field: {n}" for n in ("To", "Sent", "Basic idea", "Task scope")])
+                             [f"missing field: {n}" for n in ("To", "Sent", "Basic idea", "Task scope")]
+                             + ["task body: empty (nothing after the header block)"])
             bad_party = HEADER.replace("To: reviewer", "To: nobody")
             self.assertIn("From or To is not a known party", request.check(bad_party, pathlib.Path(root), root))
             same = HEADER.replace("To: reviewer", "To: planner")
@@ -135,6 +139,46 @@ class PackageAndDependencyTest(unittest.TestCase):
             self.assertFalse(request.is_ancestor(repo, "c" * 40, base))
 
 
+class TruncatedRequestTest(unittest.TestCase):
+    """A 9-line request to the reviewer with no "Main sha:" line and no body used to PASS."""
+
+    FIXTURE = pathlib.Path(__file__).resolve().parent / "fixtures" / "truncated-9-line-request.md"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmp.cleanup)
+        self.root = pathlib.Path(self.tmp.name)
+        pkg = self.root / "exchange" / "packages" / "p01"
+        pkg.mkdir(parents=True)
+        (pkg / "SHA256SUMS.txt").write_text("", encoding="utf-8")
+        self.text = self.FIXTURE.read_text(encoding="utf-8")
+
+    def test_the_truncated_request_is_returned_naming_both_missing_parts(self):
+        self.assertEqual(len(self.text.splitlines()), 9)
+        self.assertEqual(request.check(self.text, self.root, self.root),
+                         ["missing field: Main sha", "task body: empty (nothing after the header block)"])
+
+    def test_with_main_sha_and_a_body_it_passes(self):
+        full = self.text + "Main sha: " + SHA40 + "\n" + BODY
+        self.assertEqual(request.check(full, self.root, self.root), [])
+
+    def test_main_sha_must_be_one_full_sha(self):
+        for extra, want in (("Main sha: abc\n", "Main sha: not a full 40-character sha"),
+                            ("Main sha: " + SHA40 + "\nMain sha: " + SHA40 + "\n",
+                             "Main sha: must appear on exactly one line, found 2")):
+            with self.subTest(want=want):
+                self.assertIn(want, request.check(self.text + extra + BODY, self.root, self.root))
+
+    def test_main_sha_is_for_reviewer_requests_only(self):
+        text = self.text.replace("To: reviewer", "To: owner") + BODY
+        self.assertEqual(request.check(text, self.root, self.root), [])
+
+    def test_gate_and_route_return_it(self):
+        from tools.checker2 import request_gate, route
+        self.assertEqual(request_gate.main([str(self.FIXTURE), "--root", str(self.root), "--repo", str(self.root)]), 1)
+        self.assertEqual(route.send(self.FIXTURE, self.root, self.root), "RETURN")
+
+
 if __name__ == "__main__":
     unittest.main()
 
@@ -144,7 +188,7 @@ class GateEntryTest(unittest.TestCase):
         from tools.checker2 import request_gate
         with tempfile.TemporaryDirectory() as root:
             good = pathlib.Path(root) / "good.md"
-            good.write_text(HEADER.replace("To: reviewer", "To: owner"), encoding="utf-8")
+            good.write_text(HEADER.replace("To: reviewer", "To: owner") + BODY, encoding="utf-8")
             bad = pathlib.Path(root) / "bad.md"
             bad.write_text("From: reviewer\n", encoding="utf-8")
             self.assertEqual(request_gate.main([str(good), "--root", root, "--repo", root]), 0)

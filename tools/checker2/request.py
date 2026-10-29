@@ -131,11 +131,37 @@ def pre_code_reasons(head, root, sent, repo, text):
     return reasons
 
 
+def body_text(text):
+    """The task body: everything after the header block's first blank line."""
+    lines = text.splitlines()
+    for index, line in enumerate(lines):
+        if not line.strip():
+            return "\n".join(lines[index + 1:]).strip()
+    return ""
+
+
+def main_sha_reasons(text):
+    """A request to the reviewer carries exactly one 'Main sha:' line with a full 40-character sha."""
+    values = [line[len("Main sha:"):].strip() for line in text.splitlines() if line.startswith("Main sha:")]
+    if not values:
+        return ["missing field: Main sha"]
+    if len(values) != 1:
+        return [f"Main sha: must appear on exactly one line, found {len(values)}"]
+    if not SHA40.match(values[0]):
+        return ["Main sha: not a full 40-character sha"]
+    return []
+
+
 def check(text, root, repo):
     """Return the list of reasons the request is returned; an empty list means PASS."""
     head = parse_header(text)
-    reasons = [f"missing field: {name}" for name in REQUIRED if not head.get(name)]
-    if reasons:
+    missing = [f"missing field: {name}" for name in REQUIRED if not head.get(name)]
+    reasons = list(missing)
+    if head.get("To") and head["To"][0].lower() in REVIEWERS:
+        reasons += main_sha_reasons(text)
+    if not body_text(text):
+        reasons.append("task body: empty (nothing after the header block)")
+    if missing:
         return reasons
     sender = head["From"][0].lower()
     receiver = head["To"][0].lower()

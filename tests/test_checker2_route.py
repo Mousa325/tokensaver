@@ -10,7 +10,7 @@ from tools.checker2 import route
 
 NOW = datetime.datetime(2026, 10, 29, 8, 0, 0, tzinfo=datetime.timezone.utc)
 STAMP = "20261029T080000Z"
-GOOD = "From: planner\nTo: owner\nSent: 2026-10-26T12:00:00Z\nBasic idea: x\nTask scope: x\n"
+GOOD = "From: planner\nTo: owner\nSent: 2026-10-26T12:00:00Z\nBasic idea: x\nTask scope: x\n\nThe task.\n"
 
 
 class RouteTest(unittest.TestCase):

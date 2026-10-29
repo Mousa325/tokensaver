@@ -19,7 +19,7 @@ Pure Python standard library. No packages to install.
 Unpack this folder anywhere. The folder that holds `tools\` is the project root. Results go to
 `exchange\` under that root.
 
-1. Run the unit tests from the root folder. All 32 should pass. Name the test modules as shown:
+1. Run the unit tests from the root folder. All 38 should pass. Name the test modules as shown:
    `python -m unittest discover` finds none in this layout.
 
        python -m unittest tests.test_checker2 tests.test_checker2_request tests.test_checker2_route
@@ -52,6 +52,8 @@ Start from `request-template.md`. Every header line is read by the checker.
   (`Run the failing review checks and sweep every place of the same class before delivery`).
 - Round 2 or later must contain the words `same-class sweep`.
 - A request to `reviewer` must have exactly one line that starts with `Package:`. Two or none is returned.
+- A request to `reviewer` must have exactly one `Main sha:` line with the full 40-hex sha of the main branch it reviews.
+- Every request needs a task body: at least one line after the blank line that ends the header block.
 - A coder report must contain the section `Choices not covered`.
 
 Get a sha and size for a referenced file:

@@ -11,7 +11,7 @@ Python 3.13.17
 
 ```
 $ python3 -m unittest tests.test_checker2 tests.test_checker2_request tests.test_checker2_route 2>&1 | tail -3
-Ran 32 tests in 1.342s
+Ran 38 tests in 1.342s
 
 OK
 [exit 0]
@@ -34,6 +34,8 @@ Open choices: 0
 Dependencies: none
 Allowed paths: src/ tests/
 Round: 1
+
+Add greet(name) to src/greet.py and a test that checks its output.
 [exit 0]
 ```
 

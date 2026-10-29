@@ -217,7 +217,7 @@ class RequestInCliTest(unittest.TestCase):
             make_repo(repo, "main")
             config = {"repo": repo, "expected_branch": "main", "lock_file": str(pathlib.Path(repo) / "no.lock"),
                       "python": sys.executable, "min_free_bytes": 1}
-            head = "From: planner\nTo: owner\nSent: 2026-10-26T12:00:00Z\nBasic idea: x\nTask scope: x\n"
+            head = "From: planner\nTo: owner\nSent: 2026-10-26T12:00:00Z\nBasic idea: x\nTask scope: x\n\nThe task.\n"
             result = cli.run(config, pkg, None, "/tmp", head)
             self.assertEqual({c["item"]: c["status"] for c in result["checks"]}["request"], "PASS")
             bad = cli.run(config, pkg, None, "/tmp", head.replace("To: owner", "To: nobody"))
