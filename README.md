@@ -51,6 +51,7 @@ Start from `request-template.md`. Every header line is read by the checker.
 - A fix request that follows review notes needs `Fix rule:` with the exact rule text
   (`Run the failing review checks and sweep every place of the same class before delivery`).
 - Round 2 or later must contain the words `same-class sweep`.
+- A request to `reviewer` must have exactly one line that starts with `Package:`. Two or none is returned.
 - A coder report must contain the section `Choices not covered`.
 
 Get a sha and size for a referenced file:

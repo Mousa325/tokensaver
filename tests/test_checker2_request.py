@@ -149,3 +149,18 @@ class GateEntryTest(unittest.TestCase):
             bad.write_text("From: reviewer\n", encoding="utf-8")
             self.assertEqual(request_gate.main([str(good), "--root", root, "--repo", root]), 0)
             self.assertEqual(request_gate.main([str(bad), "--root", root, "--repo", root]), 1)
+
+
+class SinglePackageLineTest(unittest.TestCase):
+    def test_a_reviewer_request_needs_exactly_one_package_line(self):
+        with tempfile.TemporaryDirectory() as root:
+            rootp = pathlib.Path(root)
+            pkg = rootp / "pkg"
+            pkg.mkdir()
+            (pkg / "SHA256SUMS.txt").write_text("", encoding="utf-8")
+            base = "From: coder\nTo: reviewer\nSent: 2026-10-26T12:00:00Z\nBasic idea: x\nTask scope: x\n"
+            once = base + "Package: pkg\n"
+            twice = base + "Package: pkg\nPackage: pkg\n"
+            self.assertFalse(any("exactly one line" in r for r in request.check(once, rootp, rootp)))
+            self.assertIn("Package: must appear on exactly one line, found 2",
+                          request.check(twice, rootp, rootp))

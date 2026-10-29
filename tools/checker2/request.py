@@ -155,6 +155,9 @@ def check(text, root, repo):
     if receiver in CODERS and head.get("Review notes") and " ".join(head.get("Fix rule", [])) != FIX_RULE:
         reasons.append("Fix rule: missing or not the exact rule text (a fix request after review notes)")
     if receiver in REVIEWERS:
+        count = sum(1 for line in text.splitlines() if line.startswith("Package:"))
+        if count != 1:
+            reasons.append(f"Package: must appear on exactly one line, found {count}")
         reasons += package_reasons(head, root)
     if sender in CODERS | REVIEWERS:
         reasons += ref_or_missing(head, "Report", root, None, pinned=False)
