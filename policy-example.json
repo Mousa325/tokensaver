@@ -1,0 +1,30 @@
+{
+  "_repo": "Folder of the git checkout the checks read (branch and history). Example: C:\\work\\my-project",
+  "repo": "C:\\work\\my-project",
+  "_expected_branch": "Branch the package must be on. Example: main",
+  "expected_branch": "main",
+  "_lock_file": "Lock file the checker must not find held by a live process (no lock = fine). Example: C:\\work\\my-project\\locks\\checker.lock",
+  "lock_file": "C:\\work\\my-project\\locks\\checker.lock",
+  "_python": "Absolute path of the Python that runs the checks (Python 3.12 recommended). Example: C:\\Python312\\python.exe",
+  "python": "C:\\Python312\\python.exe",
+  "_min_free_bytes": "Minimum free disk space in bytes before a check is allowed. Example: 2000000000 (2 GB)",
+  "min_free_bytes": 2000000000,
+  "_runner_log": "Optional. Log file of the job runner; used to tell a stopped job from a running one.",
+  "runner_log": "C:\\work\\my-project\\logs\\runner.log",
+  "_task_id": "Optional. Id of the task whose log lines are checked. Example: task-042",
+  "task_id": "task-042",
+  "_job_lock": "Optional. Lock file of that job; a live pid in it means RUNNING, not abandoned.",
+  "job_lock": "C:\\work\\my-project\\locks\\task-042.lock",
+  "_allowed_paths": "Optional. Path prefixes or globs a patch may change. Empty list = no changes allowed; omit the key to skip the check.",
+  "allowed_paths": ["src/", "tests/"],
+  "_command_checks": "Optional. Commands that must exit 0 and print the expected text. Example: a test run or a linter.",
+  "command_checks": [
+    {"check": "python -m ruff check src tests", "expect": "All checks passed!"}
+  ],
+  "_result_rules": "Optional. Labels that the brief must hold one result row for, per changed file (| label | file | result |). Empty list = off. Example: [\"T1\", \"T2\"]",
+  "result_rules": [],
+  "_banned_commands": "Optional. Text that must not appear in the brief.",
+  "banned_commands": ["git push --force"],
+  "_needs_human": "Items a machine cannot judge. Always printed in the report under 'unverified'.",
+  "needs_human": ["decisions about money or access stay with the owner"]
+}
