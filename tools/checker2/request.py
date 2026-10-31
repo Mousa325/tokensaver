@@ -200,6 +200,7 @@ def review_return_problems(review_text):
     if len(classes) < len(defects) or not all(classes):
         problems.append(f"review return: {len(defects)} 'Defect:' line(s) but {sum(1 for c in classes if c)} "
                         "'Class:' line(s) with text")
+    problems += site_table_problems(review_text)
     return problems
 
 
@@ -221,6 +222,120 @@ def needs_confirm_pass(review_text):
     passed = re.search(r"(?im)^\W*(plan-)?verdict\s*:\s*(PASS|PLAN_READY)\b", review_text)
     # a passing verdict may still list Defect: lines for the findings it closed; those are not open findings
     return not passed and bool(re.search(r"(?im)^\W*defect\s*:", review_text))
+
+
+# A checklist that must be complete. The reviewer names, for every finding, its
+# root, its class and EVERY site of the class in a table; the fixer answers every finding with its root fixed, every
+# class site checked and the similar sites; anything missing goes back and does not pass.
+FINDING_HEAD = re.compile(r"(?m)^#{2,4}\s*\**\s*(?P<id>[A-Z][A-Z0-9]*-[A-Z]?\d+)\b")
+SITE_REF = re.compile(r"[\w./\\-]+\.\w+:(\d+(?:-\d+)?(?:\s*,\s*\d+(?:-\d+)?)*)")
+FIX_STATUS = ("FIXED", "CHECKED")
+
+
+def review_findings(review_text):
+    """{finding id: its 'Class sites: <n>'} for every finding heading (### <ID> ...) in a REVIEW, in order;
+    n is None when the section has no such line."""
+    heads = list(FINDING_HEAD.finditer(review_text))
+    found = {}
+    for i, head in enumerate(heads):
+        end = heads[i + 1].start() if i + 1 < len(heads) else len(review_text)
+        section = review_text[head.start():end]
+        m = re.search(r"(?im)^\W*class sites\s*:\W*(\d+)", section)
+        found.setdefault(head.group("id"), int(m.group(1)) if m else None)
+    return found
+
+
+def _site_count(cell_text):
+    """Sites named in a table row: path:line counts 1, path:a,b,c counts 3, a range a-b counts 1."""
+    return sum(len(m.group(1).split(",")) for m in SITE_REF.finditer(cell_text))
+
+
+def _rows_for(text, fid):
+    pattern = re.compile(r"^\|\s*\**" + re.escape(fid) + r"\**\s*\|", re.IGNORECASE)
+    return [line.strip() for line in text.splitlines() if pattern.match(line.strip())]
+
+
+def site_table_problems(review_text):
+    """The reviewer's checklist: every finding has a heading with its id and a sites table that names at least
+    'Class sites: <n>' sites (rows '| <ID> | path:line[,line...] | status |'), each row with a status."""
+    defects = len(re.findall(r"(?im)^\W*defect\s*:", review_text))
+    if not defects or re.search(r"(?im)^\W*(plan-)?verdict\s*:\s*(PASS|PLAN_READY)\b", review_text):
+        return []                     # no findings, or a passing verdict listing the findings it closed
+    findings = review_findings(review_text)
+    problems = []
+    if len(findings) < defects:
+        problems.append(f"review return: {defects} 'Defect:' line(s) but {len(findings)} finding heading(s) "
+                        "'### <ID> ...'; every finding needs its id heading")
+    for fid, n in findings.items():
+        if n is None:
+            problems.append(f"review return: {fid}: no 'Class sites: <n>' line in its section")
+            continue
+        rows = [r for r in _rows_for(review_text, fid) if _site_count(r)]
+        named = sum(_site_count(r) for r in rows)
+        if named < n:
+            problems.append(f"review return: {fid}: 'Class sites: {n}' but the sites table names {named}; list every "
+                            f"site of the class as rows '| {fid} | path:line | status |'")
+        empty = [r for r in rows if not r.rstrip("|").split("|")[-1].strip()]
+        if empty:
+            problems.append(f"review return: {fid}: {len(empty)} site row(s) without a status")
+    return problems
+
+
+def closure_problems(findings, fix_text):
+    """The fixer's checklist: one row per finding '| <ID> | root: ... | sites: k/n | similar: ... | FIXED|CHECKED |'
+    with every class site checked (k == n, n at least the reviewer's count)."""
+    problems = []
+    for fid, n in findings.items():
+        rows = _rows_for(fix_text, fid)
+        if not rows:
+            problems.append(f"fix report: {fid}: no closure row; back to the fixer")
+            continue
+        row = " ".join(rows)
+        if not re.search(r"(?i)root\s*:\s*\w", row):
+            problems.append(f"fix report: {fid}: no 'root:' (what was fixed at the root); back to the fixer")
+        m = re.search(r"(?i)sites\s*:\s*(\d+)\s*/\s*(\d+)", row)
+        if not m:
+            problems.append(f"fix report: {fid}: no 'sites: <checked>/<total>'; back to the fixer")
+        else:
+            done, total = int(m.group(1)), int(m.group(2))
+            if done != total or (n is not None and total < n):
+                problems.append(f"fix report: {fid}: sites {done}/{total} (reviewer counted {n}); every class site must "
+                                "be fixed or checked; back to the fixer")
+        if not re.search(r"(?i)similar\s*:\s*\w", row):
+            problems.append(f"fix report: {fid}: no 'similar:' (the similar sites searched); back to the fixer")
+        cells = [c.strip().strip("*").upper() for c in row.split("|")]
+        if not any(c in FIX_STATUS for c in cells):
+            problems.append(f"fix report: {fid}: status is not FIXED or CHECKED; back to the fixer")
+    return problems
+
+
+def fix_closure_reasons(head, root, text, kind):
+    """A code review request (not a confirm pass) names 'Findings:' (the confirmed REVIEW, or 'none') and
+    'Fix report:' (the fixer's closure table); every finding must have a complete closure row."""
+    if kind != "code" or text_present(text, CONFIRM_TEXT):
+        return []
+    findings_ref = " ".join(head.get("Findings", [])).strip()
+    if not findings_ref:
+        return ["code review request: missing field 'Findings:' (the confirmed REVIEW the fix answers, or 'none')"]
+    if findings_ref.lower() == "none":
+        return []
+    reasons = []
+    review_path = root / findings_ref.split()[0]
+    fix_ref = " ".join(head.get("Fix report", [])).strip()
+    fix_path = root / fix_ref.split()[0] if fix_ref else None
+    if not review_path.is_file():
+        reasons.append(f"Findings: file not found: {findings_ref.split()[0]}")
+    if not fix_ref:
+        reasons.append("code review request: missing field 'Fix report:' (the fixer's closure table)")
+    elif not fix_path.is_file():
+        reasons.append(f"Fix report: file not found: {fix_ref.split()[0]}")
+    if reasons:
+        return reasons
+    review_text = review_path.read_text(encoding="utf-8", errors="replace")
+    findings = review_findings(review_text)
+    if not findings:
+        return [f"Findings: no finding headings '### <ID> ...' in {findings_ref.split()[0]}"]
+    return closure_problems(findings, fix_path.read_text(encoding="utf-8", errors="replace"))
 
 
 # No full-suite run unless the review is clean; the suite run is the last step before the merge.
@@ -307,6 +422,7 @@ def check(text, root, repo):
         reasons.append("review request: the standard full-coverage text is missing: " + COVERAGE_TEXT)
     if receiver in REVIEWERS:
         reasons += windows_run_reasons(head, text, root, kind)
+        reasons += fix_closure_reasons(head, root, text, kind)
     if receiver in REVIEWERS:
         count = sum(1 for line in text.splitlines() if line.startswith("Package:"))
         if count != 1:

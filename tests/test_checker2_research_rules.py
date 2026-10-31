@@ -128,7 +128,8 @@ class RootCauseTest(unittest.TestCase):
     def test_a_return_with_each_finding_labelled_passes(self):
         text = ("verdict: CHANGES_REQUIRED\ncoverage: COMPLETE\n### R6-01\n- **Defect:** x leaks\n"
                 "- **Root cause:** check after use\n- **Class:** check-then-use\n- **Class sites:** 4\n"
-                "- **Origin:** unchanged lines; the earlier round read only the changed hunk\n")
+                "- **Origin:** unchanged lines; the earlier round read only the changed hunk\n"
+                "| R6-01 | src/a.py:1,2 | open |\n| R6-01 | src/b.py:7-9 | open |\n| R6-01 | tests/t.py:3 | open |\n")
         self.assertEqual(request.review_return_problems(text), [])
         self.assertEqual(request.review_return_problems("verdict: PASS\ncoverage: COMPLETE\nno findings\n"), [])
 
@@ -169,8 +170,8 @@ class FullCoverageTest(unittest.TestCase):
 
 class ConfirmPassTest(unittest.TestCase):
     # findings go back to the reviewer until a pass with no new findings; only then to the fixer
-    FOUND = ("verdict: CHANGES_REQUIRED\ncoverage: COMPLETE\nDefect: a\nRoot cause: b\nClass: c\nClass sites: 2\n"
-             "Origin: new in this round\n")
+    FOUND = ("verdict: CHANGES_REQUIRED\ncoverage: COMPLETE\n### R1-01 a\nDefect: a\nRoot cause: b\nClass: c\n"
+             "Class sites: 2\nOrigin: new in this round\n| R1-01 | src/a.py:4,9 | open |\n")
 
     def code(self, text):
         with tempfile.TemporaryDirectory() as tmp:
@@ -355,3 +356,72 @@ class SuiteAfterCleanReviewTest(unittest.TestCase):
 
     def test_a_run_request_that_is_not_the_suite_needs_no_review(self):
         self.assertEqual(self.reasons("run", "tools/smoke_check.cmd"), [])
+
+class CompleteChecklistTest(unittest.TestCase):
+    # The reviewer lists every class site in a table; the fixer answers every finding
+    # with its root, every site checked and the similar sites; anything missing goes back and does not pass
+    REVIEW = ("verdict: CHANGES_REQUIRED\ncoverage: COMPLETE\n"
+              "### R2-01 — Medium — a\nDefect: a\nRoot cause: b\nClass: c\nClass sites: 3\nOrigin: new\n"
+              "| R2-01 | src/app/core.py:97,110 | open |\n| R2-01 | src/app/cli.py:120 | open |\n"
+              "### R2-02 — Low — d\nDefect: d\nRoot cause: e\nClass: f\nClass sites: 1\nOrigin: new\n"
+              "| R2-02 | tools/x.py:5 | open |\n")
+    FIX = ("| Finding | root | sites | similar | status |\n|---|---|---|---|---|\n"
+           "| R2-01 | root: one producer | sites: 3/3 | similar: grep write_text, 0 more | FIXED |\n"
+           "| R2-02 | root: lint | sites: 1/1 | similar: ruff whole file | CHECKED |\n")
+
+    def test_a_review_naming_every_site_passes_the_table_rule(self):
+        self.assertEqual(request.site_table_problems(self.REVIEW), [])
+        self.assertEqual(request.review_findings(self.REVIEW), {"R2-01": 3, "R2-02": 1})
+
+    def test_a_review_with_fewer_sites_than_its_count_is_returned(self):
+        short = self.REVIEW.replace("| R2-01 | src/app/cli.py:120 | open |\n", "")
+        problems = request.review_return_problems(short)
+        self.assertTrue(any("R2-01" in p and "names 2" in p for p in problems), problems)
+
+    def test_a_finding_without_heading_or_status_is_returned(self):
+        no_head = self.REVIEW.replace("### R2-02 — Low — d\n", "")
+        self.assertTrue(any("finding heading" in p for p in request.site_table_problems(no_head)))
+        no_status = self.REVIEW.replace("| tools/x.py:5 | open |", "| tools/x.py:5 | |")
+        self.assertTrue(any("without a status" in p for p in request.site_table_problems(no_status)))
+
+    def test_a_passing_verdict_needs_no_site_table(self):
+        self.assertEqual(request.site_table_problems("verdict: PASS\ncoverage: COMPLETE\nDefect: closed x\n"), [])
+
+    def test_a_complete_closure_table_passes(self):
+        self.assertEqual(request.closure_problems(request.review_findings(self.REVIEW), self.FIX), [])
+
+    def test_each_missing_piece_of_the_closure_sends_it_back(self):
+        findings = request.review_findings(self.REVIEW)
+        cases = {"no closure row": self.FIX.replace("| R2-02 | root: lint | sites: 1/1 | similar: ruff whole file | CHECKED |\n", ""),
+                 "no 'root:'": self.FIX.replace("root: one producer", "one producer"),
+                 "sites 2/3": self.FIX.replace("sites: 3/3", "sites: 2/3"),
+                 "reviewer counted 3": self.FIX.replace("sites: 3/3", "sites: 2/2"),
+                 "no 'similar:'": self.FIX.replace("similar: grep write_text, 0 more", "-"),
+                 "not FIXED or CHECKED": self.FIX.replace("| FIXED |", "| OPEN |")}
+        for words, fix in cases.items():
+            with self.subTest(words):
+                problems = request.closure_problems(findings, fix)
+                self.assertTrue(any(words in p and "back to the fixer" in p for p in problems), problems)
+
+    def reasons(self, extra, files):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = pathlib.Path(tmp)
+            for name, body in files.items():
+                (root / name).write_text(body, encoding="utf-8")
+            head = HEADER.replace("gate-kind: review", "gate-kind: code").rstrip("\n")
+            fields = "".join("\n" + line for line in extra.splitlines() if ":" in line.split(" ")[0] or line.startswith("Fix report"))
+            body = "\n".join(line for line in extra.splitlines() if not (":" in line.split(" ")[0] or line.startswith("Fix report")))
+            text = head + fields + "\n\n" + body + "\n" + request.SINGLE_PASS_TEXT
+            return [r for r in request.check(text, root, tmp) if "Findings" in r or "Fix report" in r or "fix report" in r]
+
+    def test_a_code_review_request_must_name_findings_and_a_complete_fix_report(self):
+        self.assertTrue(any("missing field 'Findings:'" in r for r in self.reasons("", {})))
+        self.assertEqual(self.reasons("Findings: none", {}), [])
+        self.assertTrue(any("missing field 'Fix report:'" in r for r in self.reasons("Findings: R.md", {"R.md": self.REVIEW})))
+        ok = self.reasons("Findings: R.md\nFix report: F.md", {"R.md": self.REVIEW, "F.md": self.FIX})
+        self.assertEqual(ok, [])
+        bad = self.reasons("Findings: R.md\nFix report: F.md", {"R.md": self.REVIEW, "F.md": self.FIX.replace("3/3", "1/3")})
+        self.assertTrue(any("back to the fixer" in r for r in bad), bad)
+
+    def test_a_confirm_pass_request_is_not_a_fix_request(self):
+        self.assertEqual(self.reasons(request.CONFIRM_TEXT, {}), [])

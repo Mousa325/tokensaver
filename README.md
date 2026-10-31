@@ -65,6 +65,11 @@ Review rounds (requests to `reviewer` with a `gate-kind:` line):
 - A review request may not ask for the full test suite on its `Run only:` line. The suite is its own
   request (`gate-kind: run`), filed only after a clean review and right before the merge. It names
   that review on a `Clean review:` line, and the review must pass with no open findings.
+- A `gate-kind: code` review request (not a confirm pass) carries `Findings:` (the confirmed REVIEW the
+  fix answers, or `none`) and `Fix report:` (the fixer's closure table). The fix report has one row per
+  finding: `| <ID> | root: <what was fixed> | sites: <checked>/<total> | similar: <what was searched> | FIXED |`
+  (or `CHECKED`). Every class site must be covered (checked = total, and total at least the reviewer's
+  `Class sites:` count). A missing row or piece sends the request back to the fixer.
 
 ## Check a review before you relay it
 
@@ -72,7 +77,9 @@ Review rounds (requests to `reviewer` with a `gate-kind:` line):
 
 - **PASS** (exit 0): well formed; relay it.
 - **RETURN** (exit 1): a finding lacks its `Root cause:`, `Class:`, `Class sites:` or `Origin:`
-  line, or there is no `coverage: COMPLETE` line.
+  line, or there is no `coverage: COMPLETE` line, or a finding is missing its `### <ID>` heading or
+  its sites table. The sites table lists every site of the class as rows
+  `| <ID> | path:line[,line...] | status |`, at least as many sites as `Class sites: <n>`.
 - **CONFIRM** (exit 3): well formed, but it has findings. Send it back to the reviewer as a confirm
   pass (`CONFIRM_TEXT`) with the earlier findings inside the package, until the reviewer writes
   `confirm: NO_NEW_FINDINGS`. Only then do the findings go to the fixer.
