@@ -228,6 +228,18 @@ def needs_confirm_pass(review_text):
 SUITE_RUN = re.compile(r"(?i)run_tests_parallel|unittest\s+discover|windows\s+(suite|run|gate)|full\s+(test\s+)?suite")
 
 
+NEGATION = re.compile(r"(?i)\b(no|not|never|without)\b")
+
+
+def suite_requested(text):
+    """A suite command or phrase that is asked for; 'no full suite in this request' is not a request."""
+    for match in SUITE_RUN.finditer(text):
+        before = re.split(r"[.;:\n(]", text[max(0, match.start() - 40):match.start()])[-1]
+        if not NEGATION.search(before):
+            return True
+    return False
+
+
 def run_only_text(text):
     """The text of every 'Run only:' line (a field may sit outside the header block)."""
     return " ".join(m.group(1) for m in re.finditer(r"(?im)^Run only:\s*(.*)$", text))
@@ -242,11 +254,11 @@ def clean_review(review_text):
 def windows_run_reasons(head, text, root, kind):
     """A review request may not ask for the suite; a suite request must name a clean review ('Clean review:')."""
     if kind not in NO_FINDINGS_KINDS:
-        if SUITE_RUN.search(run_only_text(text)):
+        if suite_requested(run_only_text(text)):
             return [("review request asks for the full suite run; the suite is filed on its own, "
                      "only after a clean review (no new findings) and before the merge")]
         return []
-    if not SUITE_RUN.search(text):
+    if not suite_requested(text):
         return []
     if not head.get("Clean review"):
         return ["suite run request: missing field 'Clean review:' (the passing REVIEW with no new findings)"]

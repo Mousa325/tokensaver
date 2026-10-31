@@ -11,7 +11,7 @@ Python 3.13.17
 
 ```
 $ python3 -m unittest tests.test_checker2 tests.test_checker2_request tests.test_checker2_route tests.test_checker2_research_rules tests.test_checker2_extras tests.test_checker2_table_rows 2>&1 | tail -3
-Ran 101 tests in 1.903s
+Ran 102 tests in 1.958s
 
 OK
 [exit 0]

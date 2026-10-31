@@ -19,7 +19,7 @@ Pure Python standard library. No packages to install.
 Unpack this folder anywhere. The folder that holds `tools\` is the project root. Results go to
 `exchange\` under that root.
 
-1. Run the unit tests from the root folder. All 101 should pass. Name the test modules as shown:
+1. Run the unit tests from the root folder. All 102 should pass. Name the test modules as shown:
    `python -m unittest discover` finds none in this layout.
 
        python -m unittest tests.test_checker2 tests.test_checker2_request tests.test_checker2_route tests.test_checker2_research_rules tests.test_checker2_extras tests.test_checker2_table_rows

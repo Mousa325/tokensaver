@@ -336,6 +336,11 @@ class SuiteAfterCleanReviewTest(unittest.TestCase):
     def test_a_review_with_probes_only_passes(self):
         self.assertEqual(self.reasons("code", "none; targeted probes only"), [])
 
+    def test_saying_no_suite_is_not_asking_for_it(self):
+        run = "the targeted unittest modules of task.md section 5. NO Windows suite in this request (a separate run follows)."
+        self.assertEqual(self.reasons("write", run), [])
+        self.assertTrue(self.reasons("write", "targeted modules; then the Windows suite"))
+
     def test_a_suite_run_without_a_clean_review_is_returned(self):
         self.assertTrue(self.reasons("run", "tools/run_tests_parallel.py"))
         self.assertTrue(self.reasons("run", "tools/run_tests_parallel.py", "Clean review: missing.md"))
