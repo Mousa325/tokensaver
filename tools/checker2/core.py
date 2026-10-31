@@ -117,10 +117,12 @@ def out_of_scope(patch_text, allowed):
     a path must start with an allowed item or match it as a glob).
     """
     scope = [item.lower() for item in allowed]
+    if not scope:
+        return "(no allowed paths: every change is refused)" if patch_text.strip() else None
     for line in patch_text.splitlines():
         if line.startswith("+++ b/"):
             path = line[6:].strip().lower()
-            if scope and not any(path.startswith(item) or fnmatch.fnmatchcase(path, item) for item in scope):
+            if not any(path.startswith(item) or fnmatch.fnmatchcase(path, item) for item in scope):
                 return path
     return None
 

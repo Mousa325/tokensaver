@@ -15,7 +15,7 @@ import pathlib
 import shutil
 import sys
 
-from tools.checker2 import request
+from tools.checker2 import budget, request
 
 ROOT = pathlib.Path(__file__).resolve().parents[2]
 REPO = ROOT
@@ -29,8 +29,11 @@ def send(path, root=ROOT, repo=REPO, now=None):
     head = request.parse_header(text)
     sender = head.get("From", ["unknown"])[0].lower()
     receiver = head.get("To", ["unknown"])[0].lower()
-    reasons = request.check(text, root, repo)
     checker_dir = root / "exchange"
+    state_path = checker_dir / "state.json"
+    state = budget.load(state_path)
+    key = budget.task_key(head, path.name)
+    reasons = budget.problems(state, key) + request.check(text, root, repo)
     if reasons:
         verdict = "RETURN"
         note = checker_dir / "returned" / sender / f"{stamp}-{path.name}.RETURN.txt"
@@ -43,6 +46,7 @@ def send(path, root=ROOT, repo=REPO, now=None):
         shutil.copyfile(path, target)
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         target.with_name(target.name + ".PASS.txt").write_text(f"PASS {stamp} sha256={digest}\n", encoding="utf-8")
+    budget.save(state_path, budget.record(state, key, verdict))
     checker_dir.mkdir(parents=True, exist_ok=True)
     with (checker_dir / "audit.log").open("a", encoding="utf-8") as log:
         log.write(f"{stamp} | {sender} -> {receiver} | {path.name} | {verdict} | {'; '.join(reasons)}\n")
