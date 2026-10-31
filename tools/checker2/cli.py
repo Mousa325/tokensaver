@@ -10,12 +10,20 @@ import os
 import pathlib
 import sys
 
-from tools.checker2 import core, env_check, package_check, report, request
+from tools.checker2 import (
+    core,
+    env_check,
+    extras,
+    package_check,
+    report,
+    request,
+    table_rows,
+)
 
 SEAL_FILES = ("SHA256SUMS.txt", "SIZES.txt")
 
 
-def run(config, package_dir, brief_text, temp, request_text=None):
+def run(config, package_dir, brief_text, temp, request_text=None, run_extras=False, extras_out=None):
     """config: policy dict. Returns the report dict."""
     results = []
 
@@ -54,6 +62,23 @@ def run(config, package_dir, brief_text, temp, request_text=None):
                         "detail": f"{len(paths)} changed file(s)",
                         "reasons": [{"rule": "result", "item": path, "fix": f"add a | {rule} | {path} | result | row"}
                                     for path, rule in per_file]})
+
+    if brief_text is not None:
+        reviews = [files[name].decode("utf-8", "replace") for name in files
+                   if "REVIEW" in pathlib.Path(name).name.upper() and name.endswith(".md")]
+        sweep = package_check.variant_sweep_problems(brief_text, reviews)
+        patches = [files[name] for name in files if name.endswith((".diff", ".patch"))]
+        changed = sorted({p for raw in patches for p in package_check.changed_paths(raw.decode("utf-8", "replace"))})
+        sweep += package_check.class_walk_problems(brief_text, changed, reviews)
+        sweep += package_check.root_match_problems(brief_text, reviews)
+        sweep += package_check.class_search_problems(brief_text, reviews, files.get("base.zip"), files)
+        results.append({"item": "variant-sweep", "status": "FAIL" if sweep else "PASS", "detail": "; ".join(sweep),
+                        "reasons": [{"rule": "variant-sweep", "item": "variant-sweep", "fix": p} for p in sweep]})
+
+    if brief_text is not None and table_rows.find_table(brief_text) is not None:
+        rows = table_rows.problems(brief_text, config["repo"], files)
+        results.append({"item": "table-rows", "status": "FAIL" if rows else "PASS", "detail": f"{len(rows)} problem(s)",
+                        "reasons": [{"rule": "table-rows", "item": "table-rows", "fix": r} for r in rows]})
 
     for index, gate in enumerate(config.get("command_checks", [])):
         ok = core.gate_passes(gate["check"], gate["expect"], config["repo"])
@@ -107,6 +132,9 @@ def run(config, package_dir, brief_text, temp, request_text=None):
     results.append({"item": "banned", "status": "FAIL" if banned else "PASS", "detail": ", ".join(banned),
                     "reasons": [{"rule": "banned", "item": c, "fix": "remove banned command"} for c in banned]})
 
+    if run_extras:
+        results.extend(extras.run_extras(config, config["repo"], temp, extras_out))
+
     return report.build_report(results, config.get("needs_human", []) + unverified)
 
 
@@ -117,11 +145,13 @@ def main(argv=None):
     parser.add_argument("--brief", type=pathlib.Path, default=None)
     parser.add_argument("--request", type=pathlib.Path, default=None, help="request file to check (header rules)")
     parser.add_argument("--temp", default=os.environ.get("TEMP", os.environ.get("TMPDIR", "/tmp")))
+    parser.add_argument("--extras", action="store_true", help="also run the report-only tools named in policy extras")
+    parser.add_argument("--extras-out", type=pathlib.Path, default=None, help="folder for the full tool output")
     args = parser.parse_args(argv)
     config = json.loads(args.config.read_text(encoding="utf-8"))
     brief = args.brief.read_text(encoding="utf-8") if args.brief else None
     request_text = args.request.read_text(encoding="utf-8") if args.request else None
-    result = run(config, args.package, brief, args.temp, request_text)
+    result = run(config, args.package, brief, args.temp, request_text, args.extras, args.extras_out)
     print(report.dumps_report(result))
     return report.exit_code(result)
 

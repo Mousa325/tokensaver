@@ -19,10 +19,10 @@ Pure Python standard library. No packages to install.
 Unpack this folder anywhere. The folder that holds `tools\` is the project root. Results go to
 `exchange\` under that root.
 
-1. Run the unit tests from the root folder. All 38 should pass. Name the test modules as shown:
+1. Run the unit tests from the root folder. All 101 should pass. Name the test modules as shown:
    `python -m unittest discover` finds none in this layout.
 
-       python -m unittest tests.test_checker2 tests.test_checker2_request tests.test_checker2_route
+       python -m unittest tests.test_checker2 tests.test_checker2_request tests.test_checker2_route tests.test_checker2_research_rules tests.test_checker2_extras tests.test_checker2_table_rows
 
    On Windows, use `py -3 -m unittest ...` if `python` is not on PATH.
 2. Copy `request-template.md` to `my-request.md` and fill in every field (see below).
@@ -56,6 +56,27 @@ Start from `request-template.md`. Every header line is read by the checker.
 - Every request needs a task body: at least one line after the blank line that ends the header block.
 - A coder report must contain the section `Choices not covered`.
 
+Review rounds (requests to `reviewer` with a `gate-kind:` line):
+
+- The request carries three standard texts word for word (`SINGLE_PASS_TEXT`, `ROOT_CAUSE_TEXT`
+  and `COVERAGE_TEXT` in `tools/checker2/request.py`): one pass with every finding, a
+  `Defect:` / `Root cause:` / `Class:` line set for each finding, and a full inventory with
+  `Class sites: <n>`, `Origin:` and a closing `coverage: COMPLETE` line.
+- A review request may not ask for the full test suite on its `Run only:` line. The suite is its own
+  request (`gate-kind: run`), filed only after a clean review and right before the merge. It names
+  that review on a `Clean review:` line, and the review must pass with no open findings.
+
+## Check a review before you relay it
+
+    python -m tools.checker2.review_return REVIEW.md
+
+- **PASS** (exit 0): well formed; relay it.
+- **RETURN** (exit 1): a finding lacks its `Root cause:`, `Class:`, `Class sites:` or `Origin:`
+  line, or there is no `coverage: COMPLETE` line.
+- **CONFIRM** (exit 3): well formed, but it has findings. Send it back to the reviewer as a confirm
+  pass (`CONFIRM_TEXT`) with the earlier findings inside the package, until the reviewer writes
+  `confirm: NO_NEW_FINDINGS`. Only then do the findings go to the fixer.
+
 Get a sha and size for a referenced file:
 
     sha256sum study.md          (Linux, macOS, Git Bash)
@@ -79,6 +100,27 @@ For a folder of files with a brief:
 Exit 0 = PASS, 2 = RETURNED. The folder must hold `SHA256SUMS.txt` and `SIZES.txt`, listing every
 other file with its sha256 and byte size. The output is a JSON report.
 
+A fix package that answers review findings (a `REVIEW*.md` with open findings in the folder, or
+`Round: 2` or later in the brief) also needs:
+
+- a `| Finding | Finding class | Sites checked | Root cause fixed |` table, one row per finding,
+  with the sites as `file:line` and a `cause:` of at least three words;
+- a `Class-walk test:` line when a changed file is named in the table;
+- every root cause the reviewer wrote matched in the table;
+- a `| Finding | Kind | Search | Paths | Hits |` table with one `similar` and one `dependents`
+  row per open finding. Each regex is re-run over `base.zip` plus the package code, the count must
+  equal `Hits`, zero hits is refused, and every file hit must be named in that finding's sites.
+
+A brief with a table whose header starts `| Covers |` (six columns: Covers, Class, Quoted code, What the
+quoted lines do, Assertion, Decision) is checked row by row against the source files named in the third
+header cell: quoted lines must match the source exactly, cited line numbers must exist, descriptions may not
+use overclaim words (always, never, must, guarantee, ...), and Decision is one of OK, KEPT, FIXED, EXCLUDED,
+n.a. See `tools/checker2/table_rows.py` for the full list.
+
+`--extras` also runs optional report-only tools (Hypothesis, Cosmic Ray, Semgrep) from a venv named in the
+policy (`extras`); they never change the verdict. Set the venv up once with
+`python -m tools.checker2.extras --setup <venv>`.
+
 Items the checker cannot judge are listed as `unverified`. `UNVERIFIED` is never a pass.
 
 ## Policy
@@ -99,8 +141,8 @@ explain the key after them. Main keys:
 ## Layout
 
 - `tools/checker2/`: `request.py` (request rules), `route.py` (routing writer),
-  `request_gate.py` (check only, writes nothing), `package_check.py`, `core.py`, `env_check.py`,
-  `report.py`, `cli.py`.
+  `request_gate.py` (check only, writes nothing), `review_return.py` (review check),
+  `package_check.py`, `table_rows.py`, `extras.py`, `core.py`, `env_check.py`, `report.py`, `cli.py`.
 - `tests/`: unit tests for each part.
 - `policy-example.json`, `request-template.md`, `run-check.cmd`, `WALKTHROUGH.md`.
 
