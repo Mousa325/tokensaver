@@ -112,6 +112,21 @@ def is_ancestor(repo, dep, base):
     return result.returncode == 0
 
 
+APPROVED = re.compile(r"^\S+\s+\d{4}-\d{2}-\d{2}T\S+")
+TEST_LOG_MARKS = ("python -m unittest tests.", "cwd: tests")
+
+
+def test_log_reasons(head, root):
+    """A coding request names a Test log whose run covers the repo root and the tests folder."""
+    if not head.get("Test log"):
+        return ["Test log: missing (the targeted tests run from the repo root and from tests/)"]
+    file = root / head["Test log"][0].split()[0].replace("\\", "/")
+    if not file.is_file():
+        return [f"Test log: file not found {head['Test log'][0]}"]
+    log = file.read_text(encoding="utf-8", errors="replace")
+    return [f"Test log: no run line '{mark}'" for mark in TEST_LOG_MARKS if mark not in log]
+
+
 def pre_code_reasons(head, root, sent, repo, text):
     missing = [f"missing pre-code field: {name}" for name in PRE_CODE if not head.get(name)]
     if missing:
@@ -128,6 +143,9 @@ def pre_code_reasons(head, root, sent, repo, text):
         reasons.append("Answers: a choice row is still open (later, TBD, todo or ?)")
     if head["Open choices"][0] != "0":
         reasons.append("Open choices: must be 0 before coding")
+    if not APPROVED.match(" ".join(head.get("Approved-by", [])).strip()):
+        reasons.append("Approved-by: missing (the owner's sign-off: '<name> <ISO time>' before any code)")
+    reasons += test_log_reasons(head, root)
     for dep in head["Dependencies"]:
         if dep.lower() == "none":
             continue

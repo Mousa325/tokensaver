@@ -32,10 +32,11 @@ def save(path, state):
     p.write_text(json.dumps(state, indent=1, sort_keys=True), encoding="utf-8")
 
 
-def problems(state, key):
+def problems(state, key, round_ok=False):
+    """round_ok: the request carries a 'Round-ok:' line naming the owner (the owner allows another round)."""
     entry = state.get(key, {})
     out = []
-    if entry.get("returns", 0) >= MAX_RETURNS:
+    if entry.get("returns", 0) >= MAX_RETURNS and not round_ok:
         out.append(f"loop limit: {key} returned {entry['returns']} times; stop and ask the owner")
     if entry.get("attempts", 0) >= MAX_ATTEMPTS:
         out.append(f"budget limit: {key} checked {entry['attempts']} times; stop and ask the owner")

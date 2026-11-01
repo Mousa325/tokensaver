@@ -33,7 +33,9 @@ def send(path, root=ROOT, repo=REPO, now=None):
     state_path = checker_dir / "state.json"
     state = budget.load(state_path)
     key = budget.task_key(head, path.name)
-    reasons = budget.problems(state, key) + request.check(text, root, repo)
+    round_ok = any(line.lower().startswith("round-ok:") and line.split(":", 1)[1].strip()
+                   for line in text.splitlines()[:40])
+    reasons = budget.problems(state, key, round_ok) + request.check(text, root, repo)
     if reasons:
         verdict = "RETURN"
         note = checker_dir / "returned" / sender / f"{stamp}-{path.name}.RETURN.txt"
